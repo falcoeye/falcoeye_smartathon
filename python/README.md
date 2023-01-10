@@ -72,7 +72,14 @@ The below pre-trained models were adapted from [Road Crack Detection Challange 2
 | D4 [checkpoint](https://drive.google.com/file/d/1IODGXThyH6dyahB2D3-bp73BebyxjMGc/view?usp=sharing)      	| 1024                   	| 20.5M
 | D7 [checkpoint](https://drive.google.com/file/d/1FUk_cEyYX7hEeB_DfaEEKK-p6Ltquvdb/view?usp=sharing)  	    | 1536                   	| 51M
 
-### 5- launch the tool:
+### 5- Download example videos
+
+You can download example videos from the link below
+
+[With GPS information](https://drive.google.com/file/d/1ZawEz8ACyGd_CBezhJptstNBpu6RZTLb/view?usp=sharing)
+[Without GPS Information](https://drive.google.com/file/d/1JERWkeUy_ryMh_Ran4kf5t4sCRR1zuRL/view?usp=sharing)
+
+### 6- launch the tool:
 Finally:
 To run with video with GPS information provided in the frame
 ```
@@ -84,4 +91,13 @@ To run with video that doesn't have GPS information:
 $ python run.py --checkpoints <checkpoint path> --file <mp4 or jpg file> --backbone <backbone name> --draw --video --output <where to store the csv data> --nogps
 ```
 ### 
+
+### 7- Use with different dashcam:
+This run file is just an example to showcase using the deep learning model on a dashcam video. The videos used in this repo were captured using [70mai](https://www.amazon.com/gp/product/B09T3JN21S/ref=ppx_yo_dt_b_asin_title_o00_s00?ie=UTF8&psc=1). This dashcam produces video with GPS information imprinted on the frames. The following line in the code shows where exactly the GPS information in the frame. 
+```
+GPS_X1, GPS_Y1, GPS_X2, GPS_Y2 = 1570,1853,2382,1950
+```
+The code might not work out-of-the-box with other dashcam and must be tweeked accordingly.
+
+
 
