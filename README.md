@@ -1,6 +1,6 @@
 # Falcoeye Smartathon
 
-## I.About:
+## About:
 #### Falcoeye Smartathon is a deeplearning based workflow meant for detecting and aggregating patholes severity in videos. 
 #### This project is a submission for the [2023 SADAIA Smartathon Challenge Path 2](https://smartathon.hackerearth.com/). 
 #### More information on [our team's project](put link here), [how to use the interface](put youtube video here).
