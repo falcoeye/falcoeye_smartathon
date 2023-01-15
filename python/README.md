@@ -104,8 +104,9 @@ GPS_X1, GPS_Y1, GPS_X2, GPS_Y2 = 1570,1853,2382,1950
 ```
 
 The following line in the code shows where exactly the view of the camera starts. Below this pixel is the car interior and exterior front.
-
+```
 GLASS_LINE_Y = 1350
+```
 
 The code might not work out-of-the-box with other dashcam and must be tweeked accordingly.
 
