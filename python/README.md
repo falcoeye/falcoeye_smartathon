@@ -28,7 +28,7 @@
 ##### 4- Run run.py
 
 ### 1- Clone this repository:
-First make sure you should have [git](https://git-scm.com/downloads) installed.
+First make sure you have [git](https://git-scm.com/downloads) installed.
 
 on terminal or cmd:
 Create or select path where this repository will be installed and clone the repository:
@@ -76,27 +76,38 @@ The below pre-trained models were adapted from [Road Crack Detection Challange 2
 
 You can download example videos from the link below
 
-[With GPS information](https://drive.google.com/file/d/1ZawEz8ACyGd_CBezhJptstNBpu6RZTLb/view?usp=sharing)
-[Without GPS Information](https://drive.google.com/file/d/1JERWkeUy_ryMh_Ran4kf5t4sCRR1zuRL/view?usp=sharing)
+[With GPS information](https://drive.google.com/file/d/1dWKdXDvP29oKPtzwbwxLubHko-Od7aBF/view?usp=sharing)
+
+[Without GPS Information (The hackathon video)](https://drive.google.com/file/d/1JERWkeUy_ryMh_Ran4kf5t4sCRR1zuRL/view?usp=sharing)
 
 ### 6- launch the tool:
 Finally:
 To run with video with GPS information provided in the frame
 ```
-$ python run.py --checkpoints <checkpoint path> --file <mp4 or jpg file> --backbone <backbone name> --draw --video --output <where to store the csv data>
+$ python run.py --checkpoints <checkpoint path> --file <mp4 or jpg file> --backbone <backbone name> --draw --video --output <where to store the data>
 ```
 
 To run with video that doesn't have GPS information:
 ```
-$ python run.py --checkpoints <checkpoint path> --file <mp4 or jpg file> --backbone <backbone name> --draw --video --output <where to store the csv data> --nogps
+$ python run.py --checkpoints <checkpoint path> --file <mp4 or jpg file> --backbone <backbone name> --draw --video --output <where to store the data> --nogps
 ```
 ### 
+
+To output the annotated video add --video to the command
+
+To output the extracted cracks on the road add --cracks_imgs to the command
 
 ### 7- Use with different dashcam:
 This run file is just an example to showcase using the deep learning model on a dashcam video. The videos used in this repo were captured using [70mai](https://www.amazon.com/gp/product/B09T3JN21S/ref=ppx_yo_dt_b_asin_title_o00_s00?ie=UTF8&psc=1). This dashcam produces video with GPS information imprinted on the frames. The following line in the code shows where exactly the GPS information in the frame. 
 ```
 GPS_X1, GPS_Y1, GPS_X2, GPS_Y2 = 1570,1853,2382,1950
 ```
+
+The following line in the code shows where exactly the view of the camera starts. Below this pixel is the car interior and exterior front.
+```
+GLASS_LINE_Y = 1350
+```
+
 The code might not work out-of-the-box with other dashcam and must be tweeked accordingly.
 
 
