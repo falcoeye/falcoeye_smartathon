@@ -22,13 +22,23 @@ logging.basicConfig(
 
 IMAGENET_DEFAULT_MEAN = (0.485, 0.456, 0.406)
 IMAGENET_DEFAULT_STD = (0.229, 0.224, 0.225)
-GPS_X1, GPS_Y1, GPS_X2, GPS_Y2 = 1570,1853,2382,1950
+# Dhahran
+#GPS_X1, GPS_Y1, GPS_X2, GPS_Y2 = 1570,1853,2382,1950 
+# Riyadh
+GPS_X1, GPS_Y1, GPS_X2, GPS_Y2 = 1560,1853,2410,1950 
+GLASS_LINE_Y = 1350
 
 getthresholds = {'d0' : [0.100,0.100,0.100,0.100],'d0aug' : [0.223,0.21,0.23,0.213],
 				'd1' : [0.312,0.227,0.321,0.291],'d1aug' : [0.249,0.216,0.245,0.237],
 				'd2' : [0.316,0.234,0.339,0.298],'d2aug' : [0.286,0.257,0.327,0.301],
 				'd3' : [0.385,0.318,0.436,0.384],'d3aug' : [0.328,0.375,0.411,0.342],
 				'd4' : [0.388,0.322,0.399,0.391],'d7' : [0.353,0.277,0.378,0.368]}
+
+def mkdir(path):
+	try: 
+		os.mkdir(path) 
+	except OSError as error: 
+		pass 
 
 def get_gps_value(img):
 	def deg_to_dec(deg,letter):
@@ -37,13 +47,15 @@ def get_gps_value(img):
 		return dc
 	possibl_mistakes = {
 		"°":" "," N":"N"," E":"E",
-		"'":"","°":" ",". ":".",
+		"'":"","°":" ",". ":"."," .":".",
+		"~": "","-—": "","— ":"",
 		"£":"E",") ":"","| ":"","/":"",
 		"~-":""
 	}
 	gps_part = img[GPS_Y1:GPS_Y2,GPS_X1:GPS_X2].copy()
 	# threshold to keep only white
 	gps_part = (250 - np.clip(gps_part,250,255))
+	gps_part = Image.fromarray(gps_part).convert('L')
 	gps_value = pytesseract.image_to_string(gps_part)
 	for k,v in possibl_mistakes.items():
 		gps_value = gps_value.strip().replace(k,v)
@@ -75,7 +87,7 @@ def drawonimage(image,boxes,th):
 def process_detections(img,detections,
 	threshold,draw=False):
 	results = []
-	
+	final_image = img.copy()
 	for det in detections:
 		score = float(det[4])
 		if score < 0.01:  # stop when below this threshold, scores in descending order
@@ -84,12 +96,14 @@ def process_detections(img,detections,
 		category_id = int(det[5])
 		category_id = min(4,category_id)
 		cat_threshold = threshold[category_id-1]
-		if category_id<=0 or score < cat_threshold:
-			continue
-		
 		box = det[0:4].tolist()
-		_,__,width,height = box
+		_,y,width,height = box
+
+		if category_id<=0 or score < cat_threshold or y > GLASS_LINE_Y:
+			continue
+	
 		length = ((width**2 + height**2)**0.5)
+		
 		coco_det = dict(
 			bbox=box,
 			score=score,
@@ -98,10 +112,9 @@ def process_detections(img,detections,
 		)
 		results.append(coco_det)
 
-	
 	if draw:
-		img = drawonimage(img,results,threshold) 
-	return results,img
+		final_image = drawonimage(final_image,results,threshold) 
+	return results,final_image
 
 class ResizePad:
 	def __init__(self,target_size: int, fill_color: tuple = (0, 0, 0)):
@@ -266,6 +279,7 @@ def get_args_parser():
 	parser.add_argument('--video', action="store_true",help="Write sampled frames in a video")
 	parser.add_argument('--output', type=str,help="File to write data to")
 	parser.add_argument('--nogps', action="store_true",help="Draw bounding boxes")
+	parser.add_argument('--cracks_imgs', action="store_true",help="Output cracks images")
 
 	
 	return parser
@@ -284,15 +298,18 @@ def main_video(args):
 	
 	threshold = getthresholds[args.checkpoint.split("/")[-1].split("_")[0]]
 
-	if os.path.exists(args.output):
-		with open(args.output) as f:
+	output_dir = args.output
+	mkdir(output_dir)
+	if os.path.exists(f"{output_dir}/data.csv"):
+		with open(f"{output_dir}/data.csv") as f:
 			data = f.read().split("\n")
 	else:
-		data = ["file,frame,latitude,longitude,category,length,normalized_length"]
+		data = ["file,frame,x1,y2,x2,y2,latitude,longitude,category,length,normalized_length"]
 
 	read, frame = source.read()
 	count = 0
-
+	
+	mkdir(f"{output_dir}/imgs/")
 	while read:
 		count += 1
 	
@@ -308,7 +325,8 @@ def main_video(args):
 			north,east = get_gps_value(im_rgb)
 			if north is None or east is None:
 				logging.warning(f"Couldn't read gps value for frame {count}")
-			north,east = round(north,6),round(east,6)
+			else:
+				north,east = round(north,6),round(east,6)
 			
 		# Find road cracks
 		img_tensor = model.preprocess(im_rgb)
@@ -325,18 +343,29 @@ def main_video(args):
 		n_crack = len(final_det)
 		total_length = 0
 		n_cat = [0]*4
-		for d in final_det:
+		record = None
+		for index,d in enumerate(final_det):
 			length = d["length"]
 			n_length = length/source.diameter
 			category = d["category_id"]
-			record = f"{filename},{count},{north},{east},{category},{round(length,3)},{round(n_length,3)}"
+			if args.cracks_imgs:
+				x1,y1,width,height = [int(i) for i in d["bbox"]]
+				x2,y2 = x1+width,y1+height
+				crack_part = Image.fromarray(im_rgb[y1:y2,x1:x2].copy())
+				crack_part.save(f"{output_dir}/imgs/{count}_{index}_{category}.jpg")
+			record = f"{filename},{count},{x1},{y1},{x2},{y2},{north},{east},{category},{round(length,3)},{round(n_length,3)}"
 			data.append(record)
 
+		if not record:
+			logging.info(f"{count}/{source.num_frames}")
+		else:
+			logging.info(f"{count}/{source.num_frames} {record}")
+
 		# Write data
-		with open(args.output,"w") as f:
+		with open(f"{output_dir}/data.csv","w") as f:
 			f.write("\n".join(data))
 
-		logging.info(f"{count}/{source.num_frames} {record}")
+			
 		
 		# Read next frame
 		read, frame = source.read()
