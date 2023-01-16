@@ -8,6 +8,7 @@ from PIL import Image
 import pytesseract
 import torchvision.transforms as T
 import time
+import glob
 
 from timm.models import load_checkpoint
 from bench import DetBenchPredict
@@ -26,7 +27,9 @@ IMAGENET_DEFAULT_STD = (0.229, 0.224, 0.225)
 # Dhahran
 #GPS_X1, GPS_Y1, GPS_X2, GPS_Y2 = 1570,1853,2382,1950 
 # Riyadh
-GPS_X1, GPS_Y1, GPS_X2, GPS_Y2 = 1560,1853,2410,1950 
+GPS_INFO = [(1600,1853,2450,1950),(1560,1853,2410,1950),(1570,1853,2382,1950)]
+
+
 GLASS_LINE_Y = 1350
 
 getthresholds = {'d0' : [0.100,0.100,0.100,0.100],'d0aug' : [0.223,0.21,0.23,0.213],
@@ -53,21 +56,23 @@ def get_gps_value(img):
 		"£":"E",") ":"","| ":"","/":"",
 		"~-":""
 	}
-	gps_part = img[GPS_Y1:GPS_Y2,GPS_X1:GPS_X2].copy()
-	# threshold to keep only white
-	gps_part = (250 - np.clip(gps_part,250,255))
-	gps_part = Image.fromarray(gps_part).convert('L')
-	gps_value = pytesseract.image_to_string(gps_part)
-	for k,v in possibl_mistakes.items():
-		gps_value = gps_value.strip().replace(k,v)
-		
-	try:	
-		east,north = gps_value.split(",")
-		north,east = deg_to_dec(north.strip(),"N"),deg_to_dec(east.strip(),"E")
-		return north,east
-	except:
-		logging.warning(f"Couldn't parse GPS Value: {gps_value}")
-		return None,None
+	north,east,gps_part = None,None,None
+	for GPS_X1, GPS_Y1, GPS_X2, GPS_Y2 in GPS_INFO:
+		gps_part = img[GPS_Y1:GPS_Y2,GPS_X1:GPS_X2].copy()
+		# threshold to keep only white
+		gps_part = (250 - np.clip(gps_part,250,255))
+		gps_part = Image.fromarray(gps_part).convert('L')
+		gps_value = pytesseract.image_to_string(gps_part)
+		for k,v in possibl_mistakes.items():
+			gps_value = gps_value.strip().replace(k,v)
+		try:	
+			east,north = gps_value.split(",")
+			north,east = deg_to_dec(north.strip(),"N"),deg_to_dec(east.strip(),"E")
+			break
+		except:
+			logging.warning(f"Couldn't parse GPS Value: {gps_value}")
+
+	return north,east,gps_part
 
 def drawonimage(image,boxes,th,diameter):
 	labels_colors = {
@@ -306,108 +311,121 @@ def get_args_parser():
                     help='enable CUDA inference')
 	parser.add_argument('--use-mps', action='store_true', default=False,
 							help='enable macOS GPU inference')
-
+	parser.add_argument('--gdrive', type=str, default=None,
+							help='where to store backup in google drive')
 	
 	return parser
 
 def main_video(args):
+	# parsing args
 	sample_every = args.sample_every
-	source = FileSource(args.file)
-	filename = os.path.basename(args.file)
 	output_dir = args.output
 	mkdir(output_dir)
-	video_file = os.path.basename(args.file).replace(".mp4","_pred.mp4")
-	
-	
-	
-	source.open()
-	if args.video:
-		logging.info(f"Writing prediction video into {output_dir}/{video_file}")
-		sink = FileSink(f"{output_dir}/{video_file}")
-		sink.open(source.frames_per_second,source.width,source.height)
-	
+	mkdir(f"{output_dir}/imgs/")
+	mkdir(f"{output_dir}/badgps/")
+
+	# loading model
 	model = RoadDamage(args.backbone)
 	model.initialize(args.use_cuda,args.use_mps)
-	
+
+	# parsing checkpoint threshold
 	threshold = getthresholds[args.checkpoint.split("/")[-1].split("_")[0]]
 
-	
-	
+	# loading data if exists
 	if os.path.exists(f"{output_dir}/data.csv"):
 		with open(f"{output_dir}/data.csv") as f:
 			data = f.read().split("\n")
 	else:
 		data = ["file,frame,x1,y2,x2,y2,latitude,longitude,category,length,normalized_length"]
 
-	read, frame = source.read()
-	count = 0
-	
-	mkdir(f"{output_dir}/imgs/")
-	while read:
-		count += 1
-	
-		if count % sample_every != 0:
-			# Read next frame and skip
-			read, frame = source.read()
-			continue
-			
-		im_rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
-		north,east = None,None
-		if not args.no_gps:
-			# Read gps value
-			north,east = get_gps_value(im_rgb)
-			if north is None or east is None:
-				logging.warning(f"Couldn't read gps value for frame {count}")
-			else:
-				north,east = round(north,6),round(east,6)
-			
-		# Find road cracks
-		img_tensor = model.preprocess(im_rgb)
-		predicted = model.predict(img_tensor)[0]
-		final_det,final_img = process_detections(im_rgb,predicted,
-			threshold,draw=args.draw,diameter=source.diameter) 
-
-
-		if args.video: 
-			# Sink to output
-			final_img = cv2.cvtColor(final_img, cv2.COLOR_RGB2BGR)
-
-			sink.sink(final_img)
-
-		# Outputting
-		n_crack = len(final_det)
-		total_length = 0
-		n_cat = [0]*4
-		record = None
-		for index,d in enumerate(final_det):
-			length = d["length"]
-			n_length = length/source.diameter
-			category = d["category_id"]
-			x1,y1,width,height = [int(i) for i in d["bbox"]]
-			x2,y2 = x1+width,y1+height
-			if args.cracks_imgs:	
-				crack_part = Image.fromarray(im_rgb[y1:y2,x1:x2].copy())
-				crack_part.save(f"{output_dir}/imgs/{count}_{index}_{category}.jpg")
-			record = f"{filename},{count},{x1},{y1},{x2},{y2},{north},{east},{category},{round(length,3)},{round(n_length,3)}"
-			data.append(record)
-
-		if not record:
-			logging.info(f"{count}/{source.num_frames}")
-		else:
-			logging.info(f"{count}/{source.num_frames} {record}")
-
-		# Write data
-		with open(f"{output_dir}/data.csv","w") as f:
-			f.write("\n".join(data))
-
-			
+	# looping over all files
+	for file_path in args.file:
 		
-		# Read next frame
-		read, frame = source.read()
+		# storing backup in gdrive. Used when running from colab
+		if args.gdrive:
+			with open(f"{gdrive}/data.csv","w") as f:
+				f.write("\n".join(data))
 
-	if args.video:
-		sink.close()
-	source.close()
+		logging.info(f"Handling {file_path}")
+		filename = os.path.basename(file_path)
+		video_file = os.path.basename(file_path).replace(".mp4","_pred.mp4")
+		
+		# opening source
+		source = FileSource(file_path)
+		source.open()
+		if args.video:
+			logging.info(f"Writing prediction video into {output_dir}/{video_file}")
+			sink = FileSink(f"{output_dir}/{video_file}")
+			sink.open(source.frames_per_second,source.width,source.height)
+
+		# reading first frame
+		read, frame = source.read()
+		count = 0
+		
+		# looping until the end
+		while read:
+			count += 1
+
+			if count % sample_every != 0:
+				# Read next frame and skip
+				read, frame = source.read()
+				continue
+				
+			im_rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+			north,east,gps_part = None,None,None
+			if not args.no_gps:
+				# Read gps value
+				north,east,gps_part = get_gps_value(im_rgb)
+				if north is None or east is None:
+					gps_part.save(f"{output_dir}/badgps/{filename.split('.')[0]}_{count}.jpg")
+					logging.warning(f"Couldn't read gps value for frame {count}")
+				else:
+					north,east = round(north,6),round(east,6)
+				
+			# Find road cracks
+			img_tensor = model.preprocess(im_rgb)
+			predicted = model.predict(img_tensor)[0]
+			final_det,final_img = process_detections(im_rgb,predicted,
+				threshold,draw=args.draw,diameter=source.diameter) 
+
+
+			if args.video: 
+				# Sink to output
+				final_img = cv2.cvtColor(final_img, cv2.COLOR_RGB2BGR)
+				sink.sink(final_img)
+
+			# Outputting
+			n_crack = len(final_det)
+			total_length = 0
+			n_cat = [0]*4
+			record = None
+			for index,d in enumerate(final_det):
+				length = d["length"]
+				n_length = length/source.diameter
+				category = d["category_id"]
+				x1,y1,width,height = [int(i) for i in d["bbox"]]
+				x2,y2 = x1+width,y1+height
+				if args.cracks_imgs:	
+					crack_part = Image.fromarray(im_rgb[y1:y2,x1:x2].copy())
+					crack_part.save(f"{output_dir}/imgs/{count}_{index}_{category}.jpg")
+				record = f"{filename},{count},{x1},{y1},{x2},{y2},{north},{east},{category},{round(length,3)},{round(n_length,3)}"
+				data.append(record)
+
+			if not record:
+				logging.info(f"{count}/{source.num_frames}")
+			else:
+				logging.info(f"{count}/{source.num_frames} {record}")
+
+			# Write data
+			with open(f"{output_dir}/data.csv","w") as f:
+				f.write("\n".join(data))
+			
+			# Read next frame
+			read, frame = source.read()
+
+		if args.video:
+			sink.close()
+		source.close()
 
 def main_image(args):
 	model = RoadDamage(args.backbone)
@@ -431,5 +449,11 @@ if __name__ == '__main__':
 	args = parser.parse_args()
 	if args.file.endswith(".jpg") or args.file.endswith(".png"):
 		main_image(args)
-	else:
+	elif args.file.lower().endswith(".mp4"):
+		# main fide expect args.file to be a list
+		args.file = [args.file]
+		main_video(args)
+	elif os.path.isdir(args.file):
+		# main fide expect args.file to be a list
+		args.file = glob.glob(f"{args.file}/*.MP4")+glob.glob(f"{args.file}/*.mp4")
 		main_video(args)
