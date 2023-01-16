@@ -288,9 +288,14 @@ def main_video(args):
 	sample_every = args.sample_every
 	source = FileSource(args.file)
 	filename = os.path.basename(args.file)
+	output_dir = args.output
+	mkdir(output_dir)
+	video_file = os.path.basename(args.file).replace(".mp4","_pred.mp4")
+	
 	source.open()
 	if args.video:
-		sink = FileSink(args.file.replace(".mp4","_pred.mp4"))
+		logging.info(f"Writing prediction video into {output_dir}/{video_file}")
+		sink = FileSink(f"{output_dir}/{video_file}")
 		sink.open(source.frames_per_second,source.width,source.height)
 	
 	model = RoadDamage(args.backbone)
@@ -298,8 +303,8 @@ def main_video(args):
 	
 	threshold = getthresholds[args.checkpoint.split("/")[-1].split("_")[0]]
 
-	output_dir = args.output
-	mkdir(output_dir)
+	
+	
 	if os.path.exists(f"{output_dir}/data.csv"):
 		with open(f"{output_dir}/data.csv") as f:
 			data = f.read().split("\n")

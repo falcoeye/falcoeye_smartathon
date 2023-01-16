@@ -1,0 +1,42 @@
+Falcoeye
+2D Multi-Model platform for intelligent data acquisition and analysis
+Application on road damage and potholes identification
+
+Introduction
+Potholes are a major issue for road maintenance agencies, causing damage to vehicles and posing a safety risk to drivers and passengers. To efficiently repair potholes, it is important to accurately identify and classify them according to their severity. In this proposal, we propose a solution for automating pothole detection and classification using a low-cost dash-cam equipped with GPS and a set of different pothole detection workflows. These workflows, based on various AI models and aggregation techniques, will be served on Falcoeye, a fully containerized platform that allows users to upload dash-cam videos and extract pothole data, including classification, abundance, and shape, along with GIS information. Falcoeye also enables developers to build new workflows and aggregation techniques, and can scale automatically on a Kubernetes cluster. In addition, we will create a 3D application using Unity to visualize the extracted data on a GIS map and facilitate advanced analysis of the data.
+
+Methodology
+To use the proposed system, a dash-cam will be mounted on a vehicle to capture video footage of the road as the vehicle travels. The dash-cam will be equipped with GPS to provide accurate geographic information for each frame of the video. The video footage will then be uploaded to Falcoeye, where it will be processed by the set of pothole detection workflows. These workflows will use AI models to analyze the depth, width, and shape of potholes and classify their severity. Aggregation techniques can be furthered used to combine the results from the different models and improve the accuracy of the pothole classification.
+The extracted pothole data will be re-projected onto a GIS map using a 3D application built with Unity. This application will use both normal and procedural textures to visualize the data, enabling users to easily identify the most urgent or problematic potholes. The 3D application can be used to plan and prioritize pothole repair efforts.
+
+Benefits
+The proposed pothole detection and classification system has several benefits. 
+It is low-cost and can be easily deployed on a large scale, making it an affordable solution for road maintenance agencies. 
+The low-cost dash-cam can be provided to ride-sharing drivers or online food-ordering drivers who will act as a crowd-sourcing method for collecting data.
+The use of various AI models and aggregation techniques in the workflows allows for a continuous improved accuracy and reliability of the pothole classification. 
+Falcoeye is a fully containerized platform that is easy to extend and can scale automatically, enabling developers to build and deploy new AI models and aggregation techniques. 
+The 3D application allows for advanced visualization and analysis of the extracted pothole data, enabling users to easily identify the most urgent or problematic potholes and plan repair efforts accordingly.
+
+Implementation
+For the purpose of this challenge, we have implemented a Python application based on EfficientNet and pre-trained models for detecting 4 types of potholes: 
+
+- Longitudinal Crack
+- Transverse Crack
+- Alligator Crack
+- Pothole. 
+
+The application uses the dash-cam video footage as input and runs it through the pre-trained models for pothole detection. For the purpose of this hackathon, we used 70mai Dash Cam M500 to collect data and prototype the concept. If the GPS location is embedded in the frame as in the dash-cam model we used, the GPS information will be extracted and added along with the pothole information. Additionally, pothole size aggregation will be calculated. The application produces a CSV file that contains all of this information.
+
+We have also implemented a Unity application with a GIS map and filters. The CSV data is then reprojected on the GIS map, allowing for the correlation of pothole severity with different locations. This allows for a better understanding of the distribution of potholes in a given area and can aid in prioritizing repairs. The unity application also enables the user to filter the data by pothole type, size, and severity, allowing for more targeted analysis of the data. The user can also navigate in the map using a 3D model and see the potholes in the context of the road.
+
+Falcoeye is the platform that is under development to host the pothole detection workflows and provide the user interface for the dash-cam video upload and the results visualization. The platform is demonstrated in the presentation and the video, but access to the code cannot be granted to the committee due to copyright concerns. The platform is designed to be user-friendly and easy to use, allowing anyone with a dash-cam to upload their videos and extract valuable information about the road conditions in their area
+
+Overall, this implementation allows for efficient and accurate pothole detection, classification, and analysis, making it a valuable tool for road maintenance and repair planning. The data provided by the system will aid in identifying the most urgent and problematic potholes, improving road safety for drivers and pedestrians.
+
+Future work
+The proposed solution provides an efficient and accurate approach for pothole detection and classification, but there is still room for improvement. To provide more realistic visualizations of the potholes based on 2D images, we need to extract detailed information per frame such as shape, size, direction, and depth. This information can be used to create template shapes for more realistic pothole visualizations. One potential solution for this is to use a parametric pothole mesher or similar technology. With the detailed information on shape, size, direction, and depth, we can also reconstruct the recognized potholes in a 3D mesh. This will provide a more realistic representation of the potholes, making it easier to understand the severity of the potholes and aid in repair planning.
+
+Another approach is to use computer vision techniques where we can make a gray-scale depth map and use it to construct the 3D mesh. This collection of depth information can be done using machine learning approaches or using pair of calibrated dash-cams. The implementation of these post-processing tools can be easily integrated into Falcoeye workflows providing a continuously growing mechanism for evaluation and various options and solution for the extraction and analysis of the data
+
+Conclusion
+In conclusion, the proposed pothole detection and severity classification system using a low-cost dash-cam with GPS and a set of pothole detection workflows served on Falcoeye, combined with a 3D application for data visualization and analysis, is a cost-effective and non-invasive solution for automating the process of identifying and prioritizing potholes for repair. The system has the potential to significantly improve road safety and reduce the cost of road maintenance for agencies.
