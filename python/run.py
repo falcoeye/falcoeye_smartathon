@@ -150,15 +150,22 @@ class RoadDamage:
 		img_scale = min(img_scale_y, img_scale_x)
 		return img_scale
 
-	def initialize(self):
+	def initialize(self,use_cuda,use_mps):
 		"""
 		Initialize model. This will be called during model loading time
 		:return:
 		"""
-		self.map_location = "cpu"
-		self.device = torch.device(
-			self.map_location
-		)
+		use_cuda = use_cuda and torch.cuda.is_available()
+		use_mps = use_mps and torch.backends.mps.is_available()
+
+		if use_cuda:
+			device = torch.device("cuda")
+		elif use_mps:
+			device = torch.device("mps")
+		else:
+			device = torch.device("cpu")
+		
+		self.device = device
 		
 		self.model = self._load_pickled_model()
 		self.model.to(self.device)
@@ -280,6 +287,10 @@ def get_args_parser():
 	parser.add_argument('--output', type=str,help="File to write data to")
 	parser.add_argument('--nogps', action="store_true",help="Draw bounding boxes")
 	parser.add_argument('--cracks_imgs', action="store_true",help="Output cracks images")
+	parser.add_argument('--use-cuda', action='store_true', default=False,
+                    help='disables CUDA inference')
+	parser.add_argument('--use-mps', action='store_true', default=False,
+							help='disables macOS GPU inference')
 
 	
 	return parser
@@ -292,6 +303,8 @@ def main_video(args):
 	mkdir(output_dir)
 	video_file = os.path.basename(args.file).replace(".mp4","_pred.mp4")
 	
+	
+	
 	source.open()
 	if args.video:
 		logging.info(f"Writing prediction video into {output_dir}/{video_file}")
@@ -299,7 +312,7 @@ def main_video(args):
 		sink.open(source.frames_per_second,source.width,source.height)
 	
 	model = RoadDamage(args.backbone)
-	model.initialize()
+	model.initialize(args.use_cuda,args.use_mps)
 	
 	threshold = getthresholds[args.checkpoint.split("/")[-1].split("_")[0]]
 
