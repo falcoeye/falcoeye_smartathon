@@ -7,6 +7,7 @@ import numpy as np
 from PIL import Image
 import pytesseract
 import torchvision.transforms as T
+import time
 
 from timm.models import load_checkpoint
 from bench import DetBenchPredict
@@ -68,24 +69,37 @@ def get_gps_value(img):
 		logging.warning(f"Couldn't parse GPS Value: {gps_value}")
 		return None,None
 
-def drawonimage(image,boxes,th):
+def drawonimage(image,boxes,th,diameter):
 	labels_colors = {
-		1: ("D00",(0,255,255)),
-		2: ("D10",(0,0,255)),
-		3: ("D20",(255,120,255)),
-		4: ("D40",(255,0,255))
+		1: ("Longitudinal-Crack",(0,255,255)),
+		2: ("Transverse-Crack",(0,0,255)),
+		3: ("Alligator-Crack",(255,120,255)),
+		4: ("Pothole",(255,0,255))
 	}
+	total_length = 0
+	categories_count = {
+		"Longitudinal-Crack":0,
+		"Transverse-Crack":0,
+		"Alligator-Crack":0,
+		"Pothole":0
+	}
+	
 	for item in boxes:
 		label,color = labels_colors[item["category_id"]]
 		(x,y),(x2,y2) = (int(item['bbox'][0]),int(item['bbox'][1])), (int((item['bbox'][0]+item['bbox'][2])), int(item['bbox'][1]+item['bbox'][3])+30)
 		image = cv2.rectangle(image, (x,y), (x2, y2), color, 2)
 		image = cv2.putText(image,  str(label),(int(item['bbox'][0]),int(item['bbox'][1])), cv2.FONT_HERSHEY_SIMPLEX , 0.7, color, 2, cv2.LINE_AA) 
+		total_length += item["length"]
+		categories_count[label] += 1
 	
-
+	severity_text = f"N.Size {round(total_length/diameter,2)} "
+	for k in categories_count:
+		severity_text += f"{k}: {categories_count[k]} "
+	image = cv2.putText(image,severity_text,(10,50), cv2.FONT_HERSHEY_SIMPLEX , 0.7, (0,0,255), 2, cv2.LINE_AA) 
 	return image
 		
 def process_detections(img,detections,
-	threshold,draw=False):
+	threshold,draw=False,diameter=1):
 	results = []
 	final_image = img.copy()
 	for det in detections:
@@ -113,7 +127,7 @@ def process_detections(img,detections,
 		results.append(coco_det)
 
 	if draw:
-		final_image = drawonimage(final_image,results,threshold) 
+		final_image = drawonimage(final_image,results,threshold,diameter) 
 	return results,final_image
 
 class ResizePad:
@@ -166,6 +180,7 @@ class RoadDamage:
 			device = torch.device("cpu")
 		
 		self.device = device
+		logging.info(f"Using {self.device} device")
 		
 		self.model = self._load_pickled_model()
 		self.model.to(self.device)
@@ -285,12 +300,12 @@ def get_args_parser():
 	parser.add_argument('--draw', action="store_true",help="Draw bounding boxes")
 	parser.add_argument('--video', action="store_true",help="Write sampled frames in a video")
 	parser.add_argument('--output', type=str,help="File to write data to")
-	parser.add_argument('--nogps', action="store_true",help="Draw bounding boxes")
+	parser.add_argument('--no-gps', action="store_true",help="Draw bounding boxes")
 	parser.add_argument('--cracks_imgs', action="store_true",help="Output cracks images")
 	parser.add_argument('--use-cuda', action='store_true', default=False,
-                    help='disables CUDA inference')
+                    help='enable CUDA inference')
 	parser.add_argument('--use-mps', action='store_true', default=False,
-							help='disables macOS GPU inference')
+							help='enable macOS GPU inference')
 
 	
 	return parser
@@ -338,7 +353,7 @@ def main_video(args):
 			
 		im_rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
 		north,east = None,None
-		if not args.nogps:
+		if not args.no_gps:
 			# Read gps value
 			north,east = get_gps_value(im_rgb)
 			if north is None or east is None:
@@ -350,11 +365,13 @@ def main_video(args):
 		img_tensor = model.preprocess(im_rgb)
 		predicted = model.predict(img_tensor)[0]
 		final_det,final_img = process_detections(im_rgb,predicted,
-			threshold,draw=args.draw) 
+			threshold,draw=args.draw,diameter=source.diameter) 
+
 
 		if args.video: 
 			# Sink to output
 			final_img = cv2.cvtColor(final_img, cv2.COLOR_RGB2BGR)
+
 			sink.sink(final_img)
 
 		# Outputting
@@ -366,9 +383,9 @@ def main_video(args):
 			length = d["length"]
 			n_length = length/source.diameter
 			category = d["category_id"]
-			if args.cracks_imgs:
-				x1,y1,width,height = [int(i) for i in d["bbox"]]
-				x2,y2 = x1+width,y1+height
+			x1,y1,width,height = [int(i) for i in d["bbox"]]
+			x2,y2 = x1+width,y1+height
+			if args.cracks_imgs:	
 				crack_part = Image.fromarray(im_rgb[y1:y2,x1:x2].copy())
 				crack_part.save(f"{output_dir}/imgs/{count}_{index}_{category}.jpg")
 			record = f"{filename},{count},{x1},{y1},{x2},{y2},{north},{east},{category},{round(length,3)},{round(n_length,3)}"
@@ -397,14 +414,16 @@ def main_image(args):
 	img = cv2.imread(args.file)
 	source = img[:,:,:3]
 	sink = args.file.replace(".jpg","_pred.jpg").replace(".png","_pred.jpg")
-	model.initialize()
-	north,east = get_gps_value(source)
-	logging.info(f"{north},{east}")
+	model.initialize(args.use_cuda,args.use_mps)
+	if not args.no_gps:
+		north,east = get_gps_value(source)
+		logging.info(f"{north},{east}")
 	img_tensor = model.preprocess(source)
 	predicted = model.predict(img_tensor)[0]
 	threshold = getthresholds[args.checkpoint.split("/")[-1].split("_")[0]]
+	diameter = (img.shape[1]**2+img.shape[0]**2)**0.5
 	final_det,final_img = process_detections(source,predicted,
-			threshold,draw=args.draw,norm_fac=1)        
+			threshold,draw=args.draw,diameter=diameter)        
 	cv2.imwrite(args.file.replace(".png","_pred.png"), final_img)
 
 if __name__ == '__main__':
