@@ -24,9 +24,8 @@ logging.basicConfig(
 
 IMAGENET_DEFAULT_MEAN = (0.485, 0.456, 0.406)
 IMAGENET_DEFAULT_STD = (0.229, 0.224, 0.225)
-# Dhahran
-#GPS_X1, GPS_Y1, GPS_X2, GPS_Y2 = 1570,1853,2382,1950 
-# Riyadh
+
+# Multiple possible positions for the GPS INFO depending on car speed
 GPS_INFO = [(1600,1853,2450,1950),(1620,1853,2470,1950),(1560,1853,2410,1950),(1570,1853,2382,1950)]
 
 
