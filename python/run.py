@@ -27,7 +27,7 @@ IMAGENET_DEFAULT_STD = (0.229, 0.224, 0.225)
 # Dhahran
 #GPS_X1, GPS_Y1, GPS_X2, GPS_Y2 = 1570,1853,2382,1950 
 # Riyadh
-GPS_INFO = [(1600,1853,2450,1950),(1560,1853,2410,1950),(1570,1853,2382,1950)]
+GPS_INFO = [(1600,1853,2450,1950),(1620,1853,2470,1950),(1560,1853,2410,1950),(1570,1853,2382,1950)]
 
 
 GLASS_LINE_Y = 1350
@@ -46,7 +46,13 @@ def mkdir(path):
 
 def get_gps_value(img):
 	def deg_to_dec(deg,letter):
-		d,m = deg.split()
+		p = deg.split()
+		if len(p) == 1:
+			# This is a hack for missed space between degree and minute
+			# Assuming degrees are of 2 digits
+			d,m = p[0][:2],p[0][2:]
+		else:
+			d,m = p
 		dc = float(d) + float(m.strip(letter))/60
 		return dc
 	possibl_mistakes = {
@@ -54,7 +60,9 @@ def get_gps_value(img):
 		"'":"","°":" ",". ":"."," .":".",
 		"~": "","-—": "","— ":"",
 		"£":"E",") ":"","| ":"","/":"",
-		"~-":""
+		"~-":"",
+		"nh": "",
+		"h": ""
 	}
 	north,east,gps_part = None,None,None
 	for GPS_X1, GPS_Y1, GPS_X2, GPS_Y2 in GPS_INFO:
@@ -70,6 +78,7 @@ def get_gps_value(img):
 			north,east = deg_to_dec(north.strip(),"N"),deg_to_dec(east.strip(),"E")
 			break
 		except:
+			north,east = None,None
 			logging.warning(f"Couldn't parse GPS Value: {gps_value}")
 
 	return north,east,gps_part
@@ -311,8 +320,9 @@ def get_args_parser():
                     help='enable CUDA inference')
 	parser.add_argument('--use-mps', action='store_true', default=False,
 							help='enable macOS GPU inference')
-	parser.add_argument('--gdrive', type=str, default=None,
-							help='where to store backup in google drive')
+	parser.add_argument('--skip',  action='store_true',
+							help='skip files with csv exists already')
+	
 	
 	return parser
 
@@ -331,25 +341,20 @@ def main_video(args):
 	# parsing checkpoint threshold
 	threshold = getthresholds[args.checkpoint.split("/")[-1].split("_")[0]]
 
-	# loading data if exists
-	if os.path.exists(f"{output_dir}/data.csv"):
-		with open(f"{output_dir}/data.csv") as f:
-			data = f.read().split("\n")
-	else:
-		data = ["file,frame,x1,y2,x2,y2,latitude,longitude,category,length,normalized_length"]
+	
 
 	# looping over all files
 	for file_path in args.file:
-		
-		# storing backup in gdrive. Used when running from colab
-		if args.gdrive:
-			with open(f"{gdrive}/data.csv","w") as f:
-				f.write("\n".join(data))
-
+		data = ["file,frame,x1,y1,x2,y2,latitude,longitude,category,length,normalized_length"]	
 		logging.info(f"Handling {file_path}")
 		filename = os.path.basename(file_path)
+		output_filename = filename.lower().replace(".mp4",".csv")
 		video_file = os.path.basename(file_path).replace(".mp4","_pred.mp4")
 		
+		if args.skip and os.path.exists(f"{output_dir}/{output_filename}"):
+			logging.info(f"Skipping {file_path}. Already exists")
+			continue
+
 		# opening source
 		source = FileSource(file_path)
 		source.open()
@@ -415,17 +420,17 @@ def main_video(args):
 				logging.info(f"{count}/{source.num_frames}")
 			else:
 				logging.info(f"{count}/{source.num_frames} {record}")
-
-			# Write data
-			with open(f"{output_dir}/data.csv","w") as f:
-				f.write("\n".join(data))
-			
+	
 			# Read next frame
 			read, frame = source.read()
 
 		if args.video:
 			sink.close()
 		source.close()
+		
+		# Write data
+		with open(f"{output_dir}/{output_filename}","w") as f:
+			f.write("\n".join(data))
 
 def main_image(args):
 	model = RoadDamage(args.backbone)
